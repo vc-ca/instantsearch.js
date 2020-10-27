@@ -1,4 +1,5 @@
 import { Index } from '../widgets/index/index';
+import { CreateURL } from '.';
 import {
   AlgoliaSearchHelper as Helper,
   SearchParameters,
@@ -228,6 +229,37 @@ export type IndexRenderState = Partial<{
         min?: number;
         max?: number;
         precision?: number;
+      }
+    >;
+  };
+  refinementList: {
+    [attribute: string]: WidgetRenderState<
+      {
+        createURL: CreateURL<string>;
+        helperSpecializedSearchFacetValues: any;
+        isFirstSearch: boolean;
+        isFromSearch: boolean;
+        isShowingMore: boolean;
+        items: Array<{
+          count: number;
+          highlighted: string;
+          isRefined: boolean;
+          label: string;
+          value: string;
+        }>;
+        refine(value: string): void;
+        state: SearchParameters;
+        toggleShowMore(): void;
+      },
+      {
+        attribute: string;
+        operator: string;
+        limit: number;
+        showMore: boolean;
+        showMoreLimit: number;
+        sortBy: ((firstItem: any, secondItem: any) => number) | string[];
+        escapeFacetValues: boolean;
+        transformItems(items: any): any;
       }
     >;
   };
