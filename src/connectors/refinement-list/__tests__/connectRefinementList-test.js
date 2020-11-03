@@ -925,9 +925,13 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
     );
     helper.search = jest.fn();
     helper.searchForFacetValues = jest.fn().mockReturnValue(
-      Promise.resolve({
-        facetHits: [],
-      })
+      Promise.resolve(
+        new SearchResults(helper.state, [
+          {
+            facetHits: [],
+          },
+        ])
+      )
     );
 
     widget.init({
@@ -979,22 +983,22 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
       expect.anything()
     );
 
-    expect(rendering).toHaveBeenCalledTimes(3);
-    const renderingOptions3 = rendering.mock.calls[2][0];
+    expect(rendering).toHaveBeenCalledTimes(2);
+    const renderingOptions3 = rendering.mock.calls[1][0];
 
     // `searchForItems` triggers a new render
     renderingOptions3.searchForItems('');
     await Promise.resolve();
 
-    expect(rendering).toHaveBeenCalledTimes(4);
-    const renderingOptions4 = rendering.mock.calls[3][0];
+    expect(rendering).toHaveBeenCalledTimes(3);
+    const renderingOptions4 = rendering.mock.calls[2][0];
     expect(renderingOptions4.toggleShowMore).toBeDefined();
 
     // `toggleShowMore` triggers a new render
     renderingOptions4.toggleShowMore();
 
-    expect(rendering).toHaveBeenCalledTimes(5);
-    const renderingOptions5 = rendering.mock.calls[4][0];
+    expect(rendering).toHaveBeenCalledTimes(4);
+    const renderingOptions5 = rendering.mock.calls[3][0];
     expect(renderingOptions5.items).toHaveLength(2);
 
     renderingOptions5.searchForItems('new search');
@@ -2121,15 +2125,19 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
 
       expect(renderState1.refinementList).toEqual({
         brand: {
+          canRefine: false,
+          canToggleShowMore: false,
           createURL: expect.any(Function),
-          helperSpecializedSearchFacetValues: expect.any(Function),
-          isFirstSearch: true,
+          hasExhaustiveItems: true,
           isFromSearch: false,
           isShowingMore: false,
           items: [],
           refine: expect.any(Function),
-          state: helper.state,
+          searchForItems: expect.any(Function),
           toggleShowMore: expect.any(Function),
+          widgetParams: {
+            attribute: 'brand',
+          },
         },
       });
 
@@ -2157,11 +2165,10 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
 
       expect(renderState2.refinementList).toEqual({
         brand: {
+          canRefine: true,
+          canToggleShowMore: false,
           createURL: expect.any(Function),
-          helperSpecializedSearchFacetValues:
-            renderState1.refinementList.brand
-              .helperSpecializedSearchFacetValues,
-          isFirstSearch: false,
+          hasExhaustiveItems: true,
           isFromSearch: false,
           isShowingMore: false,
           items: [
@@ -2188,8 +2195,11 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
             },
           ],
           refine: renderState1.refinementList.brand.refine,
-          state: helper.state,
+          searchForItems: expect.any(Function),
           toggleShowMore: renderState1.refinementList.brand.toggleShowMore,
+          widgetParams: {
+            attribute: 'brand',
+          },
         },
       });
     });
@@ -2217,15 +2227,19 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
       );
 
       expect(renderState1).toEqual({
+        canRefine: false,
+        canToggleShowMore: false,
         createURL: expect.any(Function),
-        helperSpecializedSearchFacetValues: expect.any(Function),
-        isFirstSearch: true,
+        hasExhaustiveItems: true,
         isFromSearch: false,
         isShowingMore: false,
         items: [],
         refine: expect.any(Function),
-        state: helper.state,
+        searchForItems: expect.any(Function),
         toggleShowMore: expect.any(Function),
+        widgetParams: {
+          attribute: 'brand',
+        },
       });
 
       const results = new SearchResults(helper.state, [
@@ -2251,10 +2265,10 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
 
       expect(renderState2).toEqual(
         expect.objectContaining({
+          canRefine: true,
+          canToggleShowMore: false,
           createURL: expect.any(Function),
-          helperSpecializedSearchFacetValues:
-            renderState1.helperSpecializedSearchFacetValues,
-          isFirstSearch: false,
+          hasExhaustiveItems: true,
           isFromSearch: false,
           isShowingMore: false,
           items: [
@@ -2281,8 +2295,11 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
             },
           ],
           refine: renderState1.refine,
-          state: helper.state,
+          searchForItems: expect.any(Function),
           toggleShowMore: renderState1.toggleShowMore,
+          widgetParams: {
+            attribute: 'brand',
+          },
         })
       );
     });

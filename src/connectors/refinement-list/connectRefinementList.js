@@ -154,126 +154,62 @@ export default function connectRefinementList(renderFn, unmountFn = noop) {
     });
     const getLimit = isShowingMore => (isShowingMore ? showMoreLimit : limit);
 
-    let lastResultsFromMainSearch = [];
+    let lastResultsFromMainSearch;
+    let lastItemsFromMainSearch = [];
     let hasExhaustiveItems = true;
     let searchForFacetValues;
     let triggerRefine;
 
-    const render = ({
-      items,
-      state,
-      createURL,
-      helperSpecializedSearchFacetValues,
-      refine,
-      isFromSearch,
-      isFirstSearch,
-      isShowingMore,
-      toggleShowMore,
-      instantSearchInstance,
-    }) => {
-      // Compute a specific createURL method able to link to any facet value state change
-      const _createURL = facetValue =>
-        createURL(state.toggleRefinement(attribute, facetValue));
-
-      // Do not mistake searchForFacetValues and searchFacetValues which is the actual search
-      // function
-      const searchFacetValues =
-        helperSpecializedSearchFacetValues &&
-        helperSpecializedSearchFacetValues(
-          state,
-          createURL,
-          helperSpecializedSearchFacetValues,
-          refine,
-          instantSearchInstance,
-          isShowingMore
-        );
-
-      const canShowLess =
-        isShowingMore && lastResultsFromMainSearch.length > limit;
-      const canShowMore = showMore && !isFromSearch && !hasExhaustiveItems;
-
-      const canToggleShowMore = canShowLess || canShowMore;
-
-      renderFn(
-        {
-          createURL: _createURL,
-          items,
-          refine,
-          searchForItems: searchFacetValues,
-          instantSearchInstance,
-          isFromSearch,
-          canRefine: isFromSearch || items.length > 0,
-          widgetParams,
-          isShowingMore,
-          canToggleShowMore,
-          toggleShowMore,
-          hasExhaustiveItems,
-        },
-        isFirstSearch
-      );
-    };
-
     /* eslint-disable max-params */
-    const createSearchForFacetValues = (helper, toggleShowMore) => (
-      state,
-      createURL,
-      helperSpecializedSearchFacetValues,
-      toggleRefinement,
-      instantSearchInstance,
-      isShowingMore
-    ) => query => {
-      if (query === '' && lastResultsFromMainSearch) {
-        // render with previous data from the helper.
-        render({
-          items: lastResultsFromMainSearch,
-          state,
-          createURL,
-          helperSpecializedSearchFacetValues,
-          refine: toggleRefinement,
-          isFromSearch: false,
-          isFirstSearch: false,
-          instantSearchInstance,
-          toggleShowMore, // and yet it will be
-          isShowingMore, // so we need to restore in the state of show more as well
-        });
-      } else {
-        const tags = {
-          highlightPreTag: escapeFacetValues
-            ? TAG_PLACEHOLDER.highlightPreTag
-            : TAG_REPLACEMENT.highlightPreTag,
-          highlightPostTag: escapeFacetValues
-            ? TAG_PLACEHOLDER.highlightPostTag
-            : TAG_REPLACEMENT.highlightPostTag,
-        };
-
-        helper
-          .searchForFacetValues(attribute, query, getLimit(isShowingMore), tags)
-          .then(results => {
-            const facetValues = escapeFacetValues
-              ? escapeFacets(results.facetHits)
-              : results.facetHits;
-
-            const normalizedFacetValues = transformItems(
-              facetValues.map(({ value, ...item }) => ({
-                ...item,
-                value,
-                label: value,
-              }))
-            );
-
-            render({
-              items: normalizedFacetValues,
+    const createSearchForFacetValues = function(helper) {
+      return (
+        state,
+        createURL,
+        instantSearchInstance,
+        isShowingMore
+      ) => query => {
+        if (query === '' && lastResultsFromMainSearch) {
+          // render with previous data from the helper.
+          renderFn({
+            ...this.getWidgetRenderState({
+              results: lastResultsFromMainSearch,
               state,
               createURL,
-              helperSpecializedSearchFacetValues,
-              refine: toggleRefinement,
-              isFromSearch: true,
-              isFirstSearch: false,
               instantSearchInstance,
-              isShowingMore,
-            });
+            }),
+            instantSearchInstance,
           });
-      }
+        } else {
+          const tags = {
+            highlightPreTag: escapeFacetValues
+              ? TAG_PLACEHOLDER.highlightPreTag
+              : TAG_REPLACEMENT.highlightPreTag,
+            highlightPostTag: escapeFacetValues
+              ? TAG_PLACEHOLDER.highlightPostTag
+              : TAG_REPLACEMENT.highlightPostTag,
+          };
+
+          helper
+            .searchForFacetValues(
+              attribute,
+              query,
+              getLimit(isShowingMore),
+              tags
+            )
+            .then(results => {
+              renderFn({
+                ...this.getWidgetRenderState({
+                  results,
+                  state,
+                  createURL,
+                  instantSearchInstance,
+                  isFromSearch: true,
+                }),
+                instantSearchInstance,
+              });
+            });
+        }
+      };
     };
     /* eslint-enable max-params */
 
@@ -305,22 +241,28 @@ export default function connectRefinementList(renderFn, unmountFn = noop) {
         triggerRefine = facetValue =>
           initOptions.helper.toggleRefinement(attribute, facetValue).search();
 
-        searchForFacetValues = createSearchForFacetValues(
-          initOptions.helper,
-          this.cachedToggleShowMore
+        searchForFacetValues = createSearchForFacetValues.call(
+          this,
+          initOptions.helper
         );
 
-        render({
-          ...this.getWidgetRenderState(initOptions),
-          instantSearchInstance: initOptions.instantSearchInstance,
-        });
+        renderFn(
+          {
+            ...this.getWidgetRenderState(initOptions),
+            instantSearchInstance: initOptions.instantSearchInstance,
+          },
+          true
+        );
       },
 
       render(renderOptions) {
-        render({
-          ...this.getWidgetRenderState(renderOptions),
-          instantSearchInstance: renderOptions.instantSearchInstance,
-        });
+        renderFn(
+          {
+            ...this.getWidgetRenderState(renderOptions),
+            instantSearchInstance: renderOptions.instantSearchInstance,
+          },
+          false
+        );
       },
 
       getRenderState(renderState, renderOptions) {
@@ -334,16 +276,35 @@ export default function connectRefinementList(renderFn, unmountFn = noop) {
       },
 
       getWidgetRenderState(renderOptions) {
-        const { results, state, createURL } = renderOptions;
-        const isFirstSearch = !results;
+        const {
+          results,
+          state,
+          createURL,
+          instantSearchInstance,
+          isFromSearch = false,
+        } = renderOptions;
         let items = [];
+        let facetValues;
 
         if (results) {
-          const facetValues =
-            results.getFacetValues(attribute, { sortBy }) || [];
-          items = transformItems(
-            facetValues.slice(0, this.getLimit()).map(formatItems)
-          );
+          if (!isFromSearch) {
+            facetValues = results.getFacetValues(attribute, { sortBy }) || [];
+            items = transformItems(
+              facetValues.slice(0, this.getLimit()).map(formatItems)
+            );
+          } else {
+            facetValues = escapeFacetValues
+              ? escapeFacets(results.facetHits)
+              : results.facetHits;
+
+            items = transformItems(
+              facetValues.map(({ value, ...item }) => ({
+                ...item,
+                value,
+                label: value,
+              }))
+            );
+          }
 
           const maxValuesPerFacetConfig = state.maxValuesPerFacet;
           const currentLimit = this.getLimit();
@@ -358,21 +319,45 @@ export default function connectRefinementList(renderFn, unmountFn = noop) {
               ? facetValues.length <= currentLimit
               : facetValues.length < currentLimit;
 
-          lastResultsFromMainSearch = items;
+          lastResultsFromMainSearch = results;
+          lastItemsFromMainSearch = items;
 
           this.toggleShowMore = this.createToggleShowMore(renderOptions);
         }
 
+        // Compute a specific createURL method able to link to any facet value state change
+        const _createURL = facetValue =>
+          createURL(state.toggleRefinement(attribute, facetValue));
+
+        // Do not mistake searchForFacetValues and searchFacetValues which is the actual search
+        // function
+        const searchFacetValues =
+          searchForFacetValues &&
+          searchForFacetValues(
+            state,
+            createURL,
+            instantSearchInstance,
+            this.isShowingMore
+          );
+
+        const canShowLess =
+          this.isShowingMore && lastItemsFromMainSearch.length > limit;
+        const canShowMore = showMore && !isFromSearch && !hasExhaustiveItems;
+
+        const canToggleShowMore = canShowLess || canShowMore;
+
         return {
+          createURL: _createURL,
           items,
-          state,
-          createURL,
-          helperSpecializedSearchFacetValues: searchForFacetValues,
           refine: triggerRefine,
-          isFromSearch: false,
-          isFirstSearch,
+          searchForItems: searchFacetValues,
+          isFromSearch,
+          canRefine: isFromSearch || items.length > 0,
+          widgetParams,
           isShowingMore: this.isShowingMore,
+          canToggleShowMore,
           toggleShowMore: this.cachedToggleShowMore,
+          hasExhaustiveItems,
         };
       },
 
