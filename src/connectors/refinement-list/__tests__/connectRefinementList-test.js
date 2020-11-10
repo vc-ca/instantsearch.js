@@ -9,6 +9,7 @@ import {
   createRenderOptions,
 } from '../../../../test/mock/createWidget';
 import { createSingleSearchResponse } from '../../../../test/mock/createAPIResponse';
+import { createInstantSearch } from '../../../../test/mock/createInstantSearch';
 
 describe('connectRefinementList', () => {
   const createWidgetFactory = () => {
@@ -492,6 +493,7 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
 
   it('Provide a function to clear the refinements at each step (or)', () => {
     const { makeWidget, rendering } = createWidgetFactory();
+    const instantSearchInstance = createInstantSearch();
     const widget = makeWidget({
       attribute: 'category',
     });
@@ -511,6 +513,7 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
       helper,
       state: helper.state,
       createURL: () => '#',
+      instantSearchInstance,
     });
 
     const firstRenderingOptions = rendering.mock.calls[0][0];
@@ -536,6 +539,7 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
   });
 
   it('Provide a function to clear the refinements at each step (and)', () => {
+    const instantSearchInstance = createInstantSearch();
     const { makeWidget, rendering } = createWidgetFactory();
     const widget = makeWidget({
       attribute: 'category',
@@ -557,6 +561,7 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
       helper,
       state: helper.state,
       createURL: () => '#',
+      instantSearchInstance,
     });
 
     const firstRenderingOptions = rendering.mock.calls[0][0];
@@ -925,13 +930,9 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
     );
     helper.search = jest.fn();
     helper.searchForFacetValues = jest.fn().mockReturnValue(
-      Promise.resolve(
-        new SearchResults(helper.state, [
-          {
-            facetHits: [],
-          },
-        ])
-      )
+      Promise.resolve({
+        facetHits: [],
+      })
     );
 
     widget.init({
@@ -983,22 +984,22 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
       expect.anything()
     );
 
-    expect(rendering).toHaveBeenCalledTimes(2);
-    const renderingOptions3 = rendering.mock.calls[1][0];
+    expect(rendering).toHaveBeenCalledTimes(3);
+    const renderingOptions3 = rendering.mock.calls[2][0];
 
     // `searchForItems` triggers a new render
     renderingOptions3.searchForItems('');
     await Promise.resolve();
 
-    expect(rendering).toHaveBeenCalledTimes(3);
-    const renderingOptions4 = rendering.mock.calls[2][0];
+    expect(rendering).toHaveBeenCalledTimes(4);
+    const renderingOptions4 = rendering.mock.calls[3][0];
     expect(renderingOptions4.toggleShowMore).toBeDefined();
 
     // `toggleShowMore` triggers a new render
     renderingOptions4.toggleShowMore();
 
-    expect(rendering).toHaveBeenCalledTimes(4);
-    const renderingOptions5 = rendering.mock.calls[3][0];
+    expect(rendering).toHaveBeenCalledTimes(5);
+    const renderingOptions5 = rendering.mock.calls[4][0];
     expect(renderingOptions5.items).toHaveLength(2);
 
     renderingOptions5.searchForItems('new search');
@@ -1515,6 +1516,70 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
     });
   });
 
+  it('caps the search in facet values to 100 facet hits', () => {
+    const { makeWidget, rendering } = createWidgetFactory();
+    const widget = makeWidget({
+      attribute: 'category',
+      limit: 50,
+      showMoreLimit: 1000,
+    });
+
+    const helper = jsHelper(
+      {},
+      '',
+      widget.getWidgetSearchParameters(new SearchParameters({}), {
+        uiState: {},
+      })
+    );
+    helper.search = jest.fn();
+    helper.searchForFacetValues = jest.fn().mockReturnValue(
+      Promise.resolve({
+        exhaustiveFacetsCount: true,
+        facetHits: [],
+        processingTimeMS: 1,
+      })
+    );
+
+    widget.init({
+      helper,
+      state: helper.state,
+      createURL: () => '#',
+    });
+
+    widget.render({
+      results: new SearchResults(helper.state, [
+        {
+          hits: [],
+          facets: {
+            category: {
+              c1: 880,
+            },
+          },
+        },
+        {
+          facets: {
+            category: {
+              c1: 880,
+            },
+          },
+        },
+      ]),
+      state: helper.state,
+      helper,
+      createURL: () => '#',
+    });
+
+    const { toggleShowMore } = rendering.mock.calls[1][0];
+    toggleShowMore();
+
+    const { searchForItems } = rendering.mock.calls[2][0];
+    searchForItems('query');
+
+    const maxNbItems = helper.searchForFacetValues.mock.calls[0][2];
+
+    expect(maxNbItems).toBe(100);
+  });
+
   it('can search in facet values with transformed items', () => {
     const { makeWidget, rendering } = createWidgetFactory();
     const widget = makeWidget({
@@ -1853,6 +1918,7 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
     it('removes refinements completely on dispose (and)', () => {
       const rendering = jest.fn();
       const makeWidget = connectRefinementList(rendering);
+      const instantSearchInstance = createInstantSearch();
 
       const widget = makeWidget({
         attribute: 'category',
@@ -1873,6 +1939,7 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
         helper,
         state: helper.state,
         createURL: () => '#',
+        instantSearchInstance,
       });
 
       widget.render({
@@ -1939,6 +2006,7 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
     it('removes refinements completely on dispose (or)', () => {
       const rendering = jest.fn();
       const makeWidget = connectRefinementList(rendering);
+      const instantSearchInstance = createInstantSearch();
 
       const widget = makeWidget({
         attribute: 'category',
@@ -1959,6 +2027,7 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
         helper,
         state: helper.state,
         createURL: () => '#',
+        instantSearchInstance,
       });
 
       widget.render({
@@ -2135,6 +2204,7 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
           refine: expect.any(Function),
           searchForItems: expect.any(Function),
           toggleShowMore: expect.any(Function),
+          sendEvent: expect.any(Function),
           widgetParams: {
             attribute: 'brand',
           },
@@ -2197,6 +2267,7 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
           refine: renderState1.refinementList.brand.refine,
           searchForItems: expect.any(Function),
           toggleShowMore: renderState1.refinementList.brand.toggleShowMore,
+          sendEvent: renderState1.refinementList.brand.sendEvent,
           widgetParams: {
             attribute: 'brand',
           },
@@ -2237,6 +2308,7 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
         refine: expect.any(Function),
         searchForItems: expect.any(Function),
         toggleShowMore: expect.any(Function),
+        sendEvent: expect.any(Function),
         widgetParams: {
           attribute: 'brand',
         },
@@ -2297,6 +2369,7 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
           refine: renderState1.refine,
           searchForItems: expect.any(Function),
           toggleShowMore: renderState1.toggleShowMore,
+          sendEvent: renderState1.sendEvent,
           widgetParams: {
             attribute: 'brand',
           },
@@ -2599,6 +2672,76 @@ See documentation: https://www.algolia.com/doc/api-reference/widgets/refinement-
           brand: ['Apple', 'Samsung'],
         });
       });
+    });
+  });
+
+  describe('insights', () => {
+    const createInitializedWidget = () => {
+      const factoryResult = createWidgetFactory();
+      const makeWidget = factoryResult.makeWidget;
+      const rendering = factoryResult.rendering;
+      const instantSearchInstance = createInstantSearch();
+      const widget = makeWidget({
+        attribute: 'category',
+      });
+
+      const helper = jsHelper(
+        {},
+        '',
+        widget.getWidgetSearchParameters(new SearchParameters({}), {
+          uiState: {},
+        })
+      );
+      helper.search = jest.fn();
+
+      widget.init({
+        helper,
+        state: helper.state,
+        createURL: () => '#',
+        instantSearchInstance,
+      });
+
+      return {
+        rendering,
+        instantSearchInstance,
+      };
+    };
+
+    it('sends event when a facet is added', () => {
+      const { rendering, instantSearchInstance } = createInitializedWidget();
+      const firstRenderingOptions =
+        rendering.mock.calls[rendering.mock.calls.length - 1][0];
+      const { refine } = firstRenderingOptions;
+      refine('value');
+      expect(instantSearchInstance.sendEventToInsights).toHaveBeenCalledTimes(
+        1
+      );
+      expect(instantSearchInstance.sendEventToInsights).toHaveBeenCalledWith({
+        eventType: 'click',
+        insightsMethod: 'clickedFilters',
+        payload: {
+          eventName: 'Filter Applied',
+          filters: ['category:"value"'],
+          index: '',
+        },
+        widgetType: 'ais.refinementList',
+      });
+    });
+
+    it('does not send event when a facet is removed', () => {
+      const { rendering, instantSearchInstance } = createInitializedWidget();
+      const firstRenderingOptions =
+        rendering.mock.calls[rendering.mock.calls.length - 1][0];
+      const { refine } = firstRenderingOptions;
+      refine('value');
+      expect(instantSearchInstance.sendEventToInsights).toHaveBeenCalledTimes(
+        1
+      );
+
+      refine('value');
+      expect(instantSearchInstance.sendEventToInsights).toHaveBeenCalledTimes(
+        1
+      ); // still the same
     });
   });
 });

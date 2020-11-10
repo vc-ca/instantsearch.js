@@ -1,6 +1,7 @@
 import {
   checkRendering,
   createDocumentationMessageGenerator,
+  createSendEventForFacet,
   noop,
 } from '../../lib/utils';
 import {
@@ -157,10 +158,11 @@ export default function connectRefinementList(renderFn, unmountFn = noop) {
     let lastResultsFromMainSearch;
     let lastItemsFromMainSearch = [];
     let hasExhaustiveItems = true;
+    let isFromSearch = false;
     let searchForFacetValues;
     let triggerRefine;
+    let sendEvent;
 
-    /* eslint-disable max-params */
     const createSearchForFacetValues = function(helper) {
       return (
         state,
@@ -168,17 +170,20 @@ export default function connectRefinementList(renderFn, unmountFn = noop) {
         instantSearchInstance,
         isShowingMore
       ) => query => {
-        if (query === '' && lastResultsFromMainSearch) {
+        if (query === '' && lastItemsFromMainSearch) {
           // render with previous data from the helper.
-          renderFn({
-            ...this.getWidgetRenderState({
-              results: lastResultsFromMainSearch,
-              state,
-              createURL,
+          renderFn(
+            {
+              ...this.getWidgetRenderState({
+                results: lastResultsFromMainSearch,
+                state,
+                createURL,
+                instantSearchInstance,
+              }),
               instantSearchInstance,
-            }),
-            instantSearchInstance,
-          });
+            },
+            false
+          );
         } else {
           const tags = {
             highlightPreTag: escapeFacetValues
@@ -193,25 +198,49 @@ export default function connectRefinementList(renderFn, unmountFn = noop) {
             .searchForFacetValues(
               attribute,
               query,
-              getLimit(isShowingMore),
+              // We cap the `maxFacetHits` value to 100 because the Algolia API
+              // doesn't support a greater number.
+              // See https://www.algolia.com/doc/api-reference/api-parameters/maxFacetHits/
+              Math.min(getLimit(isShowingMore), 100),
               tags
             )
             .then(results => {
-              renderFn({
-                ...this.getWidgetRenderState({
-                  results,
-                  state,
-                  createURL,
+              const facetValues = escapeFacetValues
+                ? escapeFacets(results.facetHits)
+                : results.facetHits;
+
+              const normalizedFacetValues = transformItems(
+                facetValues.map(({ value, ...item }) => ({
+                  ...item,
+                  value,
+                  label: value,
+                }))
+              );
+
+              const canToggleShowMore =
+                isShowingMore && lastItemsFromMainSearch.length > limit;
+
+              isFromSearch = true;
+
+              renderFn(
+                {
+                  ...this.getWidgetRenderState({
+                    results: lastResultsFromMainSearch,
+                    state,
+                    createURL,
+                    instantSearchInstance,
+                  }),
+                  items: normalizedFacetValues,
+                  canToggleShowMore,
+                  canRefine: true,
                   instantSearchInstance,
-                  isFromSearch: true,
-                }),
-                instantSearchInstance,
-              });
+                },
+                false
+              );
             });
         }
       };
     };
-    /* eslint-enable max-params */
 
     return {
       $$type: 'ais.refinementList',
@@ -237,29 +266,39 @@ export default function connectRefinementList(renderFn, unmountFn = noop) {
       },
 
       init(initOptions) {
+        const { helper, instantSearchInstance } = initOptions;
         this.cachedToggleShowMore = this.cachedToggleShowMore.bind(this);
-        triggerRefine = facetValue =>
-          initOptions.helper.toggleRefinement(attribute, facetValue).search();
 
-        searchForFacetValues = createSearchForFacetValues.call(
-          this,
-          initOptions.helper
-        );
+        sendEvent = createSendEventForFacet({
+          instantSearchInstance,
+          helper,
+          attribute,
+          widgetType: this.$$type,
+        });
+
+        triggerRefine = facetValue => {
+          sendEvent('click', facetValue);
+          helper.toggleRefinement(attribute, facetValue).search();
+        };
+
+        searchForFacetValues = createSearchForFacetValues.call(this, helper);
 
         renderFn(
           {
             ...this.getWidgetRenderState(initOptions),
-            instantSearchInstance: initOptions.instantSearchInstance,
+            instantSearchInstance,
           },
           true
         );
       },
 
       render(renderOptions) {
+        const { instantSearchInstance } = renderOptions;
+
         renderFn(
           {
             ...this.getWidgetRenderState(renderOptions),
-            instantSearchInstance: renderOptions.instantSearchInstance,
+            instantSearchInstance,
           },
           false
         );
@@ -281,30 +320,16 @@ export default function connectRefinementList(renderFn, unmountFn = noop) {
           state,
           createURL,
           instantSearchInstance,
-          isFromSearch = false,
         } = renderOptions;
+        const localIsFromSearch = isFromSearch;
         let items = [];
         let facetValues;
 
         if (results) {
-          if (!isFromSearch) {
-            facetValues = results.getFacetValues(attribute, { sortBy }) || [];
-            items = transformItems(
-              facetValues.slice(0, this.getLimit()).map(formatItems)
-            );
-          } else {
-            facetValues = escapeFacetValues
-              ? escapeFacets(results.facetHits)
-              : results.facetHits;
-
-            items = transformItems(
-              facetValues.map(({ value, ...item }) => ({
-                ...item,
-                value,
-                label: value,
-              }))
-            );
-          }
+          facetValues = results.getFacetValues(attribute, { sortBy }) || [];
+          items = transformItems(
+            facetValues.slice(0, this.getLimit()).map(formatItems)
+          );
 
           const maxValuesPerFacetConfig = state.maxValuesPerFacet;
           const currentLimit = this.getLimit();
@@ -324,6 +349,7 @@ export default function connectRefinementList(renderFn, unmountFn = noop) {
 
           this.toggleShowMore = this.createToggleShowMore(renderOptions);
         }
+        isFromSearch = false;
 
         // Compute a specific createURL method able to link to any facet value state change
         const _createURL = facetValue =>
@@ -342,7 +368,8 @@ export default function connectRefinementList(renderFn, unmountFn = noop) {
 
         const canShowLess =
           this.isShowingMore && lastItemsFromMainSearch.length > limit;
-        const canShowMore = showMore && !isFromSearch && !hasExhaustiveItems;
+        const canShowMore =
+          showMore && !localIsFromSearch && !hasExhaustiveItems;
 
         const canToggleShowMore = canShowLess || canShowMore;
 
@@ -351,13 +378,14 @@ export default function connectRefinementList(renderFn, unmountFn = noop) {
           items,
           refine: triggerRefine,
           searchForItems: searchFacetValues,
-          isFromSearch,
-          canRefine: isFromSearch || items.length > 0,
+          isFromSearch: localIsFromSearch,
+          canRefine: localIsFromSearch || items.length > 0,
           widgetParams,
           isShowingMore: this.isShowingMore,
           canToggleShowMore,
           toggleShowMore: this.cachedToggleShowMore,
           hasExhaustiveItems,
+          sendEvent,
         };
       },
 
