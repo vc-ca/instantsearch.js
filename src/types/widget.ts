@@ -50,6 +50,10 @@ import {
   QueryRulesRendererOptions,
   QueryRulesConnectorParams,
 } from '../connectors/query-rules/connectQueryRules';
+import {
+  PaginationRendererOptions,
+  PaginationConnectorParams,
+} from '../connectors/pagination/connectPagination';
 
 export type ScopedResult = {
   indexId: string;
@@ -284,6 +288,26 @@ export type IndexRenderState = Partial<{
       }
     >;
   };
+  ratingMenu: {
+    [attribute: string]: WidgetRenderState<
+      {
+        items: Array<{
+          stars: boolean[];
+          name: string;
+          value: string;
+          count: number;
+          isRefined: boolean;
+        }>;
+        hasNoResults: boolean;
+        refine(value: number): void;
+        createURL: CreateURL<string>;
+      },
+      {
+        attribute: string;
+        max?: number;
+      }
+    >;
+  };
   numericMenu: {
     [attribute: string]: WidgetRenderState<
       NumericMenuRendererOptions,
@@ -314,6 +338,10 @@ export type IndexRenderState = Partial<{
   hitsPerPage: WidgetRenderState<
     HitsPerPageRendererOptions,
     HitsPerPageConnectorParams
+  >;
+  pagination: WidgetRenderState<
+    PaginationRendererOptions,
+    PaginationConnectorParams
   >;
 }>;
 
@@ -430,9 +458,9 @@ export type Widget<
       /**
        * Returns the render state of the current widget to pass to the render function.
        */
-      getWidgetRenderState?: (
+      getWidgetRenderState?(
         renderOptions: InitOptions | RenderOptions
-      ) => unknown;
+      ): unknown;
       /**
        * Returns IndexRenderState of the current index component tree
        * to build the render state of the whole app.
@@ -452,7 +480,12 @@ export type WidgetFactory<TRendererOptions, TConnectorParams, TWidgetParams> = (
    */
   widgetParams: TConnectorParams & TWidgetParams
 ) => Widget<{
-  renderState: WidgetRenderState<TRendererOptions, TWidgetParams>;
+  renderState: WidgetRenderState<
+    TRendererOptions,
+    // widgetParams sent to the connector of builtin widgets are actually
+    // the connector params, therefore renderState uses TConnectorParams only
+    TConnectorParams
+  >;
 }>;
 
 export type Template<TTemplateData = void> =
